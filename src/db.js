@@ -11,9 +11,13 @@ if (!process.env.DATABASE_URL) {
 
 pg.types.setTypeParser(20, value => Number(value));
 pg.types.setTypeParser(1700, value => Number(value));
+// Supabase's Postgres endpoint presents a certificate chain that is not
+// trusted by Node's default CA bundle on some hosts. TLS remains enabled.
+const sslMode = (process.env.DATABASE_SSL || 'require').toLowerCase();
+const ssl = sslMode === 'disable' ? false : { rejectUnauthorized: sslMode === 'verify-full' };
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_SSL === 'disable' ? false : { rejectUnauthorized: true },
+  ssl,
   max: Number(process.env.DB_POOL_MAX || 5),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000
@@ -23,13 +27,13 @@ const tableWithId = /INSERT\s+INTO\s+(users|subjects|units|topics|coverage_histo
 
 function toPostgres(sql) {
   let index = 0;
-  return sql.replace(/\?/g, () => `$${++index}`);
+  return sql.replace(/\?/g, () => '$' + (++index));
 }
 
 async function execute(sql, params = [], mode = 'all') {
   const client = transactionContext.getStore() || pool;
   const wantsId = mode === 'run' && tableWithId.test(sql) && /^\s*INSERT\b/i.test(sql) && !/\bRETURNING\b/i.test(sql);
-  const result = await client.query(`${toPostgres(sql)}${wantsId ? ' RETURNING id' : ''}`, params);
+  const result = await client.query(toPostgres(sql) + (wantsId ? ' RETURNING id' : ''), params);
   if (mode === 'get') return result.rows[0];
   if (mode === 'run') return { changes: result.rowCount, lastInsertRowid: result.rows[0]?.id };
   return result.rows;
