@@ -57,8 +57,36 @@ async function storageRequest(url, options = {}) {
   }
   return response;
 }
+async function ensureBucket() {
+  const bucketPath = `/storage/v1/bucket/${encodeURIComponent(bucket)}`;
+  try {
+    await storageRequest(bucketPath);
+    return;
+  } catch (error) {
+    if (!String(error.message).includes('(404)')) throw error;
+  }
+  const allowedMimeTypes = [...new Set(Object.values(rules).flatMap(rule => rule.mime))];
+  try {
+    await storageRequest('/storage/v1/bucket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: bucket,
+        name: bucket,
+        public: false,
+        file_size_limit: maxBytes,
+        allowed_mime_types: allowedMimeTypes
+      })
+    });
+  } catch (error) {
+    // Another upload may have created it after our lookup.
+    if (!String(error.message).includes('(409)')) throw error;
+  }
+  await storageRequest(bucketPath);
+}
 async function saveBuffer(key, buffer, mimeType = 'application/octet-stream') {
   const safe = resolveKey(key);
+  await ensureBucket();
   await storageRequest(`/storage/v1/object/${encodeURIComponent(bucket)}/${encodeURIComponent(path.basename(safe))}`, {
     method: 'POST', body: buffer, headers: { 'Content-Type': mimeType, 'x-upsert': 'false' }
   });

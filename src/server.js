@@ -255,7 +255,7 @@ app.post('/api/admin/resources/upload',requireAuth,requireAdmin,multipartUpload,
    await db.prepare('UPDATE resources SET url=? WHERE id=?').run(`/api/resources/${id}/file`,id);
   }
   await logAdmin(req.session.user.id,old?'replace':'upload','resource',id,{title:p.data.title,fileType:descriptor?.type});res.status(old?200:201).json({id,url:`/api/resources/${id}/file`});
- }catch(e){if(stored&&descriptor)await deleteKey(descriptor.key).catch(()=>{});console.error(e);res.status(500).json({error:'File upload could not be saved.'});}
+ }catch(e){if(stored&&descriptor)await deleteKey(descriptor.key).catch(()=>{});console.error(e);res.status(502).json({error:`File upload failed: ${String(e.message||'Storage service error').slice(0,220)}`});}
 });
 app.get('/api/admin/activity',requireAuth,requireAdmin,async (_req,res)=>res.json(await db.prepare(`SELECT a.*,u.name AS admin_name FROM admin_activity a LEFT JOIN users u ON u.id=a.admin_user_id ORDER BY a.created_at DESC LIMIT 25`).all()));
 
